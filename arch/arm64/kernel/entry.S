@@ -319,11 +319,16 @@ el1_irq:
 	irq_handler
 #ifdef CONFIG_PREEMPT
 	str	w24, [tsk, #TI_PREEMPT]		// restore preempt count
-	cbnz	w24, 1f				// preempt count != 0
+	cbnz	w24, 2f				// preempt count != 0
 	ldr	x0, [tsk, #TI_FLAGS]		// get flags
-	tbz	x0, #TIF_NEED_RESCHED, 1f	// needs rescheduling?
-	bl	el1_preempt
+	tbnz	x0, #TIF_NEED_RESCHED, 1f	// needs rescheduling?
+
+	ldr	w24, [tsk, #TI_PREEMPT_LAZY]	// get preempt lazy count
+	cbnz	w24, 2f				// preempt lazy count != 0
+	tbz	x0, #TIF_NEED_RESCHED_LAZY, 2f	// needs rescheduling?
 1:
+	bl	el1_preempt
+2:
 #endif
 #ifdef CONFIG_TRACE_IRQFLAGS
 	bl	trace_hardirqs_on
@@ -338,6 +343,7 @@ el1_preempt:
 	bl	preempt_schedule_irq		// irq en/disable is done inside
 	ldr	x0, [tsk, #TI_FLAGS]		// get new tasks TI_FLAGS
 	tbnz	x0, #TIF_NEED_RESCHED, 1b	// needs rescheduling?
+	tbnz	x0, #TIF_NEED_RESCHED_LAZY, 1b	// needs rescheduling?
 	ret	x24
 #endif
 
@@ -590,6 +596,7 @@ fast_work_pending:
 	str	x0, [sp, #S_X0]			// returned x0
 work_pending:
 	tbnz	x1, #TIF_NEED_RESCHED, work_resched
+	tbnz	x1, #TIF_NEED_RESCHED_LAZY, work_resched
 	/* TIF_SIGPENDING or TIF_NOTIFY_RESUME case */
 	ldr	x2, [sp, #S_PSTATE]
 	mov	x0, sp				// 'regs'
